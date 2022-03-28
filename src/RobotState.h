@@ -17,6 +17,16 @@
 
 namespace inekf {
 
+struct EkfUpdatePair {
+  Eigen::MatrixXd X_prop;
+  Eigen::VectorXd Theta_prop;
+  Eigen::MatrixXd P_prop;
+  Eigen::MatrixXd K;
+  Eigen::MatrixXd X_corr;
+  Eigen::VectorXd Theta_corr;
+  Eigen::MatrixXd P_corr;
+}
+
 class RobotState {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW

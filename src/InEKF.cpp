@@ -198,30 +198,32 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
 }
 
 // Correct State: Right-Invariant Observation
-void InEKF::Correct(const Observation& obs) {
-  // Compute Kalman Gain
-  Eigen::MatrixXd P = state_.getP();
-  Eigen::MatrixXd PHT = P * obs.H.transpose();
-  Eigen::MatrixXd S = obs.H * PHT + obs.N;
-  Eigen::MatrixXd K = PHT * S.inverse();
+void InEKF::Correct(const Observation& obs,
+                    std::optional<EkfUpdatePair*> debug_state) {
 
-  // Copy X along the diagonals if more than one measurement
-  Eigen::MatrixXd BigX;
-  state_.copyDiagX(obs.Y.rows() / state_.dimX(), BigX);
+    if (debug_state.has_value() && debug_state.value()) {
+      debug_state->X_prop = state_.getX();
+      debug_state->Theta_prop = state_.getTheta();
+      debug_state->P_prop = state_.getP();
+    }
+    // Compute Kalman Gain
+    Eigen::MatrixXd P = state_.getP();
+    Eigen::MatrixXd PHT = P * obs.H.transpose();
+    Eigen::MatrixXd S = obs.H * PHT + obs.N;
+    Eigen::MatrixXd K = PHT * S.inverse();
 
-  // Compute correction terms
-  Eigen::MatrixXd Z = BigX * obs.Y - obs.b;
-  // cout << "Z: (from InEKF) " << endl;
-  // cout << Z.transpose() << endl;
-  Eigen::VectorXd delta = K * obs.PI * Z;
-  Eigen::MatrixXd dX =
-      Exp_SEK3(delta.segment(0, delta.rows() - state_.dimTheta()));
-  // cout << "dX: " << endl;
-  // cout << dX << endl;
-  // cout << "X from InEKF: " << endl;
-  // cout << state_.getX() << endl;
-  Eigen::VectorXd dTheta =
-      delta.segment(delta.rows() - state_.dimTheta(), state_.dimTheta());
+    if (debug_state.has_value() && debug_state.value()) {
+      debug_state->K = K;
+    }
+    // Copy X along the diagonals if more than one measurement
+    Eigen::MatrixXd BigX;
+    state_.copyDiagX(obs.Y.rows()/state_.dimX(), BigX);
+   
+    // Compute correction terms
+    Eigen::MatrixXd Z = BigX*obs.Y - obs.b;
+    Eigen::VectorXd delta = K*obs.PI*Z;
+    Eigen::MatrixXd dX = Exp_SEK3(delta.segment(0,delta.rows()-state_.dimTheta()));
+    Eigen::VectorXd dTheta = delta.segment(delta.rows()-state_.dimTheta(), state_.dimTheta());
 
   // Update state
   Eigen::MatrixXd X_new = dX * state_.getX();  // Right-Invariant Update
@@ -236,8 +238,14 @@ void InEKF::Correct(const Observation& obs) {
   Eigen::MatrixXd P_new = IKH * P * IKH.transpose() +
                           K * obs.N * K.transpose();  // Joseph update form
 
-  state_.setP(P_new);
-}
+    state_.setP(P_new);
+
+    if (debug_state.has_value() && debug_state.value()) {
+      debug_state->X_corr = X_new;
+      debug_state->Theta_corr = Theta_new;
+      debug_state->P_corr = P_new;
+    }
+}   
 
 // Create Observation from vector of landmark measurements
 void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {

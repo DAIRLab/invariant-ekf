@@ -101,12 +101,14 @@ class InEKF {
   void setState(RobotState state);
   void setNoiseParams(NoiseParams params);
   void setPriorLandmarks(const mapIntVector3d& prior_landmarks);
-  void setContacts(std::vector<std::pair<int, bool> > contacts);
+  void setContacts(std::vector<std::pair<int,bool> > contacts);
 
-  void Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt);
-  void Correct(const Observation& obs);
+  void Propagate(const Eigen::Matrix<double,6,1>& m, double dt);
+  void Correct(const Observation& obs,
+               std::optional<EkfUpdatePair*> debug_state);
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
-  void CorrectKinematics(const vectorKinematics& measured_kinematics);
+  void CorrectKinematics(const vectorKinematics& measured_kinematics,
+                         std::optional<EkfUpdatePair*> debug_state);
 
  private:
   RobotState state_;
