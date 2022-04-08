@@ -202,9 +202,9 @@ void InEKF::Correct(const Observation& obs,
                     std::optional<EkfUpdatePair*> debug_state) {
 
     if (debug_state.has_value() && debug_state.value()) {
-      debug_state->X_prop = state_.getX();
-      debug_state->Theta_prop = state_.getTheta();
-      debug_state->P_prop = state_.getP();
+      debug_state.value()->X_prop = state_.getX();
+      debug_state.value()->Theta_prop = state_.getTheta();
+      debug_state.value()->P_prop = state_.getP();
     }
     // Compute Kalman Gain
     Eigen::MatrixXd P = state_.getP();
@@ -212,9 +212,6 @@ void InEKF::Correct(const Observation& obs,
     Eigen::MatrixXd S = obs.H * PHT + obs.N;
     Eigen::MatrixXd K = PHT * S.inverse();
 
-    if (debug_state.has_value() && debug_state.value()) {
-      debug_state->K = K;
-    }
     // Copy X along the diagonals if more than one measurement
     Eigen::MatrixXd BigX;
     state_.copyDiagX(obs.Y.rows()/state_.dimX(), BigX);
@@ -241,9 +238,9 @@ void InEKF::Correct(const Observation& obs,
     state_.setP(P_new);
 
     if (debug_state.has_value() && debug_state.value()) {
-      debug_state->X_corr = X_new;
-      debug_state->Theta_corr = Theta_new;
-      debug_state->P_corr = P_new;
+      debug_state.value()->X_corr = X_new;
+      debug_state.value()->Theta_corr = Theta_new;
+      debug_state.value()->P_corr = P_new;
     }
 }   
 
@@ -385,7 +382,7 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
   // Correct state using stacked observation
   Observation obs(Y, b, H, N, PI);
   if (!obs.empty()) {
-    this->Correct(obs);
+    this->Correct(obs, {});
   }
 
   // Augment state with newly detected landmarks
@@ -438,7 +435,8 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
 }
 
 // Correct state using kinematics measured between imu and contact point
-void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
+void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics,
+                              std::optional<EkfUpdatePair*> debug_state) {
   Eigen::VectorXd Y;
   Eigen::VectorXd b;
   Eigen::MatrixXd H;
@@ -545,7 +543,12 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
   // Correct state using stacked observation
   Observation obs(Y, b, H, N, PI);
   if (!obs.empty()) {
-    this->Correct(obs);
+    if (debug_state.has_value()) {
+      this->Correct(obs, debug_state.value());
+    } else {
+      this->Correct(obs, {});
+    }
+
   }
 
   // Remove contacts from state
