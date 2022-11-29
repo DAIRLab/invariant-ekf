@@ -52,12 +52,12 @@ void NoiseParams::setContactNoise(double std) { Qc_ = std*std*Eigen::Matrix3d::I
 void NoiseParams::setContactNoise(const Eigen::Vector3d& std) { Qc_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setContactNoise(const Eigen::Matrix3d& cov) { Qc_ = cov; }
 
-Eigen::Matrix3d NoiseParams::getGyroscopeCov() { return Qg_; }
-Eigen::Matrix3d NoiseParams::getAccelerometerCov() { return Qa_; }
-Eigen::Matrix3d NoiseParams::getGyroscopeBiasCov() { return Qbg_; }
-Eigen::Matrix3d NoiseParams::getAccelerometerBiasCov() { return Qba_; }
-Eigen::Matrix3d NoiseParams::getLandmarkCov() { return Ql_; }
-Eigen::Matrix3d NoiseParams::getContactCov() { return Qc_; }
+const Eigen::Matrix3d& NoiseParams::getGyroscopeCov() { return Qg_; }
+const Eigen::Matrix3d& NoiseParams::getAccelerometerCov() { return Qa_; }
+const Eigen::Matrix3d& NoiseParams::getGyroscopeBiasCov() { return Qbg_; }
+const Eigen::Matrix3d& NoiseParams::getAccelerometerBiasCov() { return Qba_; }
+const Eigen::Matrix3d& NoiseParams::getLandmarkCov() { return Ql_; }
+const Eigen::Matrix3d& NoiseParams::getContactCov() { return Qc_; }
 
 std::ostream& operator<<(std::ostream& os, const NoiseParams& p) {
     os << "--------- Noise Params -------------" << endl;

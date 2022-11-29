@@ -92,12 +92,12 @@ class InEKF {
   // assignment operator (needed for drake abstract value)
   InEKF& operator = (const InEKF&);
 
-  RobotState getState() const;
-  NoiseParams getNoiseParams() const;
+  const RobotState& getState() const;
+  const NoiseParams& getNoiseParams() const;
   mapIntVector3d getPriorLandmarks() const;
   std::map<int, int> getEstimatedLandmarks() const;
   std::map<int, bool> getContacts() const;
-  std::map<int, int> getEstimatedContactPositions() const;
+  const std::map<int, int>& getEstimatedContactPositions() const;
   void setState(RobotState state);
   void setNoiseParams(NoiseParams params);
   void setPriorLandmarks(const mapIntVector3d& prior_landmarks);
@@ -116,6 +116,7 @@ class InEKF {
   std::map<int, bool> contacts_;
   std::map<int, int> estimated_contact_positions_;
   const Eigen::Vector3d g_ = Eigen::Vector3d(0, 0, -9.81);  // Gravity
+  const Eigen::Matrix3d gskew_ = skew(g_);
 };
 
 }  // namespace inekf

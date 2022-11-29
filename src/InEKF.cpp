@@ -69,13 +69,13 @@ InEKF& InEKF::operator = (const InEKF& old_inekf) {
 }
 
 // Return robot's current state
-RobotState InEKF::getState() const { return state_; }
+const RobotState& InEKF::getState() const { return state_; }
 
 // Sets the robot's current state
 void InEKF::setState(RobotState state) { state_ = state; }
 
 // Return noise params
-NoiseParams InEKF::getNoiseParams() const { return noise_params_; }
+const NoiseParams& InEKF::getNoiseParams() const { return noise_params_; }
 
 // Sets the filter's noise parameters
 void InEKF::setNoiseParams(NoiseParams params) { noise_params_ = params; }
@@ -94,7 +94,7 @@ map<int, int> InEKF::getEstimatedLandmarks() const {
 }
 
 // Return filter's estimated landmarks
-map<int, int> InEKF::getEstimatedContactPositions() const {
+const map<int, int>& InEKF::getEstimatedContactPositions() const {
   return estimated_contact_positions_;
 }
 
@@ -124,13 +124,13 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   Eigen::Vector3d a =
       m.tail(3) - state_.getAccelerometerBias();  // Linear Acceleration
 
-  Eigen::MatrixXd X = state_.getX();
-  Eigen::MatrixXd P = state_.getP();
+  const Eigen::MatrixXd& X = state_.getX();
+  const Eigen::MatrixXd& P = state_.getP();
 
   // Extract State
-  Eigen::Matrix3d R = state_.getRotation();
-  Eigen::Vector3d v = state_.getVelocity();
-  Eigen::Vector3d p = state_.getPosition();
+  const Eigen::Matrix3d R = state_.getRotation();
+  const Eigen::Vector3d v = state_.getVelocity();
+  const Eigen::Vector3d p = state_.getPosition();
 
   // cout << "R*a + g_: (from InEKF)" << endl;
   // cout << (R*a + g_).transpose() << endl;
@@ -151,8 +151,7 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   int dimTheta = state_.dimTheta();
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(dimP, dimP);
   // Inertial terms
-  A.block<3, 3>(3, 0) = skew(g_);  // TODO: Efficiency could be improved by not
-                                   // computing the constant terms every time
+  A.block<3, 3>(3, 0) = gskew_;
   A.block<3, 3>(6, 3) = Eigen::Matrix3d::Identity();
   // Bias terms
   A.block<3, 3>(0, dimP - dimTheta) = -R;

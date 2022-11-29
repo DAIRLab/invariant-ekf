@@ -76,67 +76,67 @@ RobotState& RobotState::operator = (const RobotState& other) {
 #endif
 
 
-const Eigen::MatrixXd RobotState::getX() { 
+const Eigen::MatrixXd& RobotState::getX() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return X_; 
 }
-const Eigen::VectorXd RobotState::getTheta() { 
+const Eigen::VectorXd& RobotState::getTheta() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return Theta_; 
 }
-const Eigen::MatrixXd RobotState::getP() { 
+const Eigen::MatrixXd& RobotState::getP() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return P_; 
 }
-const Eigen::Matrix3d RobotState::getRotation() { 
+const Eigen::Matrix3d RobotState::getRotation() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return X_.block<3,3>(0,0); 
 }
-const Eigen::Vector3d RobotState::getVelocity() { 
+const Eigen::Vector3d RobotState::getVelocity() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return X_.block<3,1>(0,3); 
 }
-const Eigen::Vector3d RobotState::getPosition() { 
+const Eigen::Vector3d RobotState::getPosition() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return X_.block<3,1>(0,4); 
 }
-const Eigen::Vector3d RobotState::getGyroscopeBias() { 
+const Eigen::Vector3d RobotState::getGyroscopeBias() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return Theta_.head(3); 
 }
-const Eigen::Vector3d RobotState::getAccelerometerBias() { 
+const Eigen::Vector3d RobotState::getAccelerometerBias() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return Theta_.tail(3); 
 }
-const int RobotState::dimX() { 
+const int RobotState::dimX() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return X_.cols(); 
 }
-const int RobotState::dimTheta() {
+const int RobotState::dimTheta() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
     return Theta_.rows();
 }
-const int RobotState::dimP() { 
+const int RobotState::dimP() const {
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
