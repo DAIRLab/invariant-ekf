@@ -23,6 +23,20 @@
 
 namespace inekf {
 
+class ExternalPositionMeasurement {
+ public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  ExternalPositionMeasurement(
+      Eigen::Vector3d positionInWorld, Eigen::Vector3d positionInBody,
+      Eigen::Matrix3d covariance) :
+                              positionInWorld_(positionInWorld),
+                              positionInBody_(positionInBody),
+                              covariance_(covariance){}
+  Eigen::Vector3d positionInWorld_;
+  Eigen::Vector3d positionInBody_;
+  Eigen::Matrix3d covariance_;
+};
+
 class Kinematics {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -105,6 +119,7 @@ class InEKF {
 
   void Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt);
   void Correct(const Observation& obs);
+  void CorrectLeft(const Observation& obs);
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
   void CorrectKinematics(const vectorKinematics& measured_kinematics);
 

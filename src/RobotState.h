@@ -26,6 +26,7 @@ class RobotState {
   RobotState(const Eigen::MatrixXd& X, const Eigen::VectorXd& Theta,
              const Eigen::MatrixXd& P);
 
+  const Eigen::MatrixXd getXinv() const;
   const Eigen::MatrixXd& getX() const;
   const Eigen::VectorXd& getTheta() const;
   const Eigen::MatrixXd& getP() const;
@@ -48,6 +49,7 @@ class RobotState {
   void setAccelerometerBias(const Eigen::Vector3d& ba);
 
   void copyDiagX(int n, Eigen::MatrixXd& BigX);
+  void copyDiagXinv(int n, Eigen::MatrixXd& BigXinv);
 
   friend std::ostream& operator<<(std::ostream& os, const RobotState& s);
 

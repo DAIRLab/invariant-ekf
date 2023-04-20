@@ -16,6 +16,8 @@
 
 namespace inekf {
 
+using Eigen::Dynamic;
+
 using namespace std;
 
 // Default constructor
@@ -75,6 +77,13 @@ RobotState& RobotState::operator = (const RobotState& other) {
 }
 #endif
 
+const Eigen::MatrixXd RobotState::getXinv() const {
+  Eigen::MatrixXd Xinv = getX();
+  const Eigen::Matrix3d& R = getRotation();
+  Xinv.topRows<3>() = -R.transpose() * Xinv.topRows<3>();
+  Xinv.topLeftCorner<3,3>() = R.transpose();
+  return Xinv;
+}
 
 const Eigen::MatrixXd& RobotState::getX() const {
 #if INEKF_USE_MUTEX
@@ -206,6 +215,22 @@ void RobotState::copyDiagX(int n, Eigen::MatrixXd& BigX) {
         BigX.block(startIndex,startIndex,dimX,dimX) = X_;
     }
     return;
+}
+
+void RobotState::copyDiagXinv(int n, Eigen::MatrixXd& BigX) {
+  int dimX = this->dimX();
+  const Eigen::MatrixXd Xinv = getXinv();
+  for(int i=0; i<n; ++i) {
+    int startIndex = BigX.rows();
+    BigX.conservativeResize(startIndex + dimX, startIndex + dimX);
+    BigX.block(startIndex,0,dimX,startIndex) = Eigen::MatrixXd::Zero(dimX,startIndex);
+    BigX.block(0,startIndex,startIndex,dimX) = Eigen::MatrixXd::Zero(startIndex,dimX);
+#if INEKF_USE_MUTEX
+    unique_lock<mutex> mlock(mutex_);
+#endif
+    BigX.block(startIndex,startIndex,dimX,dimX) = Xinv;
+  }
+  return;
 }
 
 ostream& operator<<(ostream& os, const RobotState& s) {  

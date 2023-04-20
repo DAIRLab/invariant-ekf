@@ -196,6 +196,44 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   return;
 }
 
+
+void InEKF::CorrectLeft(const Observation& obs) {
+  // Get convert covariance from right to left invariant error covariance
+  const Eigen::MatrixXd& Pr = state_.getP();
+  const Eigen::MatrixXd& adjX = Adjoint_SEK3(state_.getX());
+  Eigen::MatrixXd P = adjX.transpose() * Pr * adjX;
+
+  // Get left invariant kalman gain
+  Eigen::MatrixXd PHT = P * obs.H.transpose();
+  Eigen::MatrixXd S = obs.H * PHT + obs.N;
+  Eigen::MatrixXd K = PHT * S.inverse();
+
+  // Measurement error
+  Eigen::MatrixXd BigXinv;
+  state_.copyDiagXinv(obs.Y.rows() / state_.dimX(), BigXinv);
+  Eigen::MatrixXd Z = BigXinv * obs.Y - obs.b;
+  Eigen::VectorXd delta = K * obs.PI * Z;
+
+  // State update
+  Eigen::MatrixXd dX =
+      Exp_SEK3(delta.segment(0, delta.rows() - state_.dimTheta()));
+  Eigen::VectorXd dTheta =
+      delta.segment(delta.rows() - state_.dimTheta(), state_.dimTheta());
+  Eigen::MatrixXd X_new = state_.getX() * dX;  // Left-Invariant Update
+  Eigen::VectorXd Theta_new = state_.getTheta() + dTheta;
+  state_.setX(X_new);
+  state_.setTheta(Theta_new);
+
+  // Update Covariance
+  Eigen::MatrixXd IKH =
+      Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP()) - K * obs.H;
+  Eigen::MatrixXd P_new = IKH * P * IKH.transpose() +
+      K * obs.N * K.transpose();
+
+  // Convert back to right invariant covariance
+  state_.setP(adjX * P * adjX.transpose());
+}
+
 // Correct State: Right-Invariant Observation
 void InEKF::Correct(const Observation& obs) {
   // Compute Kalman Gain
