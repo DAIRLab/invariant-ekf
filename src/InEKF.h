@@ -122,6 +122,7 @@ class InEKF {
   void CorrectLeft(const Observation& obs);
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
   void CorrectKinematics(const vectorKinematics& measured_kinematics);
+  void CorrectExternalPositionMeasurement(const ExternalPositionMeasurement& measurement);
 
  private:
   RobotState state_;

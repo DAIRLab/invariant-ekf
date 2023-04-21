@@ -199,12 +199,22 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
 
 void InEKF::CorrectLeft(const Observation& obs) {
   // Get convert covariance from right to left invariant error covariance
-  const Eigen::MatrixXd& Pr = state_.getP();
-  const Eigen::MatrixXd& adjX = Adjoint_SEK3(state_.getX());
-  Eigen::MatrixXd P = adjX.transpose() * Pr * adjX;
+  Eigen::MatrixXd Pr = state_.getP();
+  Eigen::MatrixXd adjXinv = Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP());
+  adjXinv.topLeftCorner(state_.dimX(), state_.dimX()) = Adjoint_SEK3(state_.getXinv());
+
+  Eigen::MatrixXd P = adjXinv.transpose() * Pr * adjXinv;
+
+//  std::cout << "Y: " << obs.Y.transpose() <<
+//               "\nb: " << obs.b.transpose() <<
+//               "\nH:\n" << obs.H <<
+//               "\nPI:\n" << obs.PI <<
+//               "\nN:\n" << obs.N << std::endl;
+//  std::cout << "XinvX\n" << state_.getX() * state_.getXinv() << std::endl;
 
   // Get left invariant kalman gain
   Eigen::MatrixXd PHT = P * obs.H.transpose();
+//  std::cout << "PHT" << PHT << std::endl;
   Eigen::MatrixXd S = obs.H * PHT + obs.N;
   Eigen::MatrixXd K = PHT * S.inverse();
 
@@ -231,7 +241,9 @@ void InEKF::CorrectLeft(const Observation& obs) {
       K * obs.N * K.transpose();
 
   // Convert back to right invariant covariance
-  state_.setP(adjX * P * adjX.transpose());
+  Eigen::MatrixXd adjX = Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP());
+  adjX.topLeftCorner(state_.dimX(), state_.dimX()) = Adjoint_SEK3(state_.getX());
+  state_.setP(adjX * P_new * adjX.transpose());
 }
 
 // Correct State: Right-Invariant Observation
@@ -465,6 +477,31 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
   }
   return;
 }
+
+void InEKF::CorrectExternalPositionMeasurement(const ExternalPositionMeasurement& measurement) {
+
+  double dimX = state_.dimX();
+  double dimP = state_.dimP();
+
+  Eigen::VectorXd Y = Eigen::VectorXd::Zero(dimX);
+  Eigen::VectorXd b = Eigen::VectorXd::Zero(dimX);
+  Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, dimP);
+  Eigen::MatrixXd N = measurement.covariance_;
+  Eigen::MatrixXd PI = Eigen::MatrixXd::Zero(3, dimX);
+
+  Y.head<3>() = measurement.positionInWorld_;
+  Y(4) = 1;
+  b.head<3>() = measurement.positionInBody_;
+  b(4) = 1;
+  H.leftCols<3>() = -skew(measurement.positionInBody_);
+  H.block<3,3>(0, 6) = Eigen::Matrix3d::Identity();
+  PI.topLeftCorner<3,3>() = Eigen::Matrix3d::Identity();
+
+  CorrectLeft(
+      Observation(Y, b, H, N, PI)
+  );
+}
+
 
 // Correct state using kinematics measured between imu and contact point
 void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
