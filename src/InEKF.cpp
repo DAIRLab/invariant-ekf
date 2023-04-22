@@ -203,7 +203,7 @@ void InEKF::CorrectLeft(const Observation& obs) {
   Eigen::MatrixXd adjXinv = Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP());
   adjXinv.topLeftCorner(state_.dimX(), state_.dimX()) = Adjoint_SEK3(state_.getXinv());
 
-  Eigen::MatrixXd P = adjXinv.transpose() * Pr * adjXinv;
+  Eigen::MatrixXd P = adjXinv * Pr * adjXinv.transpose();
 
 //  std::cout << "Y: " << obs.Y.transpose() <<
 //               "\nb: " << obs.b.transpose() <<
