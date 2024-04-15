@@ -12,6 +12,7 @@
  **/
 
 #include "src/InEKF.h"
+#include <chrono>
 
 namespace inekf {
 
@@ -129,12 +130,10 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   const Eigen::MatrixXd& P = state_.getP();
 
   // Extract State
-  const Eigen::Matrix3d R = state_.getRotation();
-  const Eigen::Vector3d v = state_.getVelocity();
-  const Eigen::Vector3d p = state_.getPosition();
+  const Eigen::Matrix3d& R = state_.getRotation();
+  const Eigen::Vector3d& v = state_.getVelocity();
+  const Eigen::Vector3d& p = state_.getPosition();
 
-  // cout << "R*a + g_: (from InEKF)" << endl;
-  // cout << (R*a + g_).transpose() << endl;
   // Strapdown IMU motion model
   Eigen::Vector3d phi = w * dt;
   Eigen::Matrix3d R_pred = R * Exp_SO3(phi);
@@ -150,43 +149,36 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   int dimX = state_.dimX();
   int dimP = state_.dimP();
   int dimTheta = state_.dimTheta();
+
+  // Actually compute the elements of A * dt directly to
+  // avoid lots of unnecessary multiplications later
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(dimP, dimP);
   // Inertial terms
-  A.block<3, 3>(3, 0) = gskew_;
-  A.block<3, 3>(6, 3) = Eigen::Matrix3d::Identity();
+  A.block<3, 3>(3, 0) = dt * gskew_;
+  A.block<3, 3>(6, 3) = dt * Eigen::Matrix3d::Identity();
   // Bias terms
-  A.block<3, 3>(0, dimP - dimTheta) = -R;
-  A.block<3, 3>(3, dimP - dimTheta + 3) = -R;
+  A.block<3, 3>(0, dimP - dimTheta) = -dt * R;
+  A.block<3, 3>(3, dimP - dimTheta + 3) = -dt * R;
   for (int i = 3; i < dimX; ++i) {
-    A.block<3, 3>(3 * i - 6, dimP - dimTheta) = -skew(X.block<3, 1>(0, i)) * R;
+    A.block<3, 3>(3 * i - 6, dimP - dimTheta) = -dt * skew(X.block<3, 1>(0, i)) * R;
   }
-
-  // Noise terms
-  Eigen::MatrixXd Qk = Eigen::MatrixXd::Zero(
-      dimP, dimP);  // Landmark noise terms will remain zero
-  Qk.block<3, 3>(0, 0) = noise_params_.getGyroscopeCov();
-  Qk.block<3, 3>(3, 3) = noise_params_.getAccelerometerCov();
-  for (map<int, int>::iterator it = estimated_contact_positions_.begin();
-       it != estimated_contact_positions_.end(); ++it) {
-    Qk.block<3, 3>(3 + 3 * (it->second - 3), 3 + 3 * (it->second - 3)) =
-        noise_params_.getContactCov();  // Contact noise terms
-  }
-  Qk.block<3, 3>(dimP - dimTheta, dimP - dimTheta) =
-      noise_params_.getGyroscopeBiasCov();
-  Qk.block<3, 3>(dimP - dimTheta + 3, dimP - dimTheta + 3) =
-      noise_params_.getAccelerometerBiasCov();
 
   // Discretization
-  Eigen::MatrixXd I = Eigen::MatrixXd::Identity(dimP, dimP);
-  Eigen::MatrixXd Phi = I + A * dt;  // Fast approximation of exp(A*dt). TODO:
-                                     // explore using the full exp() instead
-  Eigen::MatrixXd Adj = I;
-  Adj.block(0, 0, dimP - dimTheta, dimP - dimTheta) =
-      Adjoint_SEK3(X);  // Approx 200 microseconds
+  Eigen::MatrixXd& Phi = A;
+  for(int i = 0; i < Phi.cols(); ++i) {
+    Phi(i, i) += 1;
+  }
+
+  // Telling eigen Qk is diagonal speeds up PhiAdj * Qk * PhiAdj.T by 2x
+  Eigen::DiagonalMatrix<double, Eigen::Dynamic> Qk = MakeQk(dimP, dimTheta, dt);
+
+  Eigen::MatrixXd Adj = Eigen::MatrixXd::Identity(dimP, dimP);
+  Adj.block(0, 0, dimP - dimTheta, dimP - dimTheta) = Adjoint_SEK3(X);
+
   Eigen::MatrixXd PhiAdj = Phi * Adj;
+
   Eigen::MatrixXd Qk_hat =
-      PhiAdj * Qk * PhiAdj.transpose() *
-      dt;  // Approximated discretized noise matrix (faster by 400 microseconds)
+      (PhiAdj * Qk) * PhiAdj.transpose(); // Approximated discretized noise matrix
 
   // Propagate Covariance
   Eigen::MatrixXd P_pred = Phi * P * Phi.transpose() + Qk_hat;
@@ -197,79 +189,49 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   return;
 }
 
+inline Eigen::DiagonalMatrix<double, Eigen::Dynamic> InEKF::MakeQk(
+    int dimP, int dimTheta, double dt) const {
+  // Noise terms
+  Eigen::DiagonalMatrix<double, Eigen::Dynamic> Qk(dimP);
+  Qk.setZero();
 
-void InEKF::CorrectLeft(const Observation& obs) {
-  // Get convert covariance from right to left invariant error covariance
-  Eigen::MatrixXd Pr = state_.getP();
-  Eigen::MatrixXd adjXinv = Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP());
-  adjXinv.topLeftCorner(state_.dimX(), state_.dimX()) = Adjoint_SEK3(state_.getXinv());
+  Qk.diagonal().segment<3>(0) = dt * noise_params_.getGyroscopeCov().diagonal();
+  Qk.diagonal().segment<3>(3) = dt * noise_params_.getAccelerometerCov().diagonal();
 
-  Eigen::MatrixXd P = adjXinv * Pr * adjXinv.transpose();
+  for (auto& it :estimated_contact_positions_) {
+    Qk.diagonal().segment<3>(3 + 3 * (it.second - 3)) =
+      dt * noise_params_.getContactCov().diagonal();  // Contact noise terms
+  }
+  Qk.diagonal().segment<3>(dimP - dimTheta) =
+      dt * noise_params_.getGyroscopeBiasCov().diagonal();
+  Qk.diagonal().segment<3>(dimP - dimTheta + 3, dimP - dimTheta + 3) =
+      dt * noise_params_.getAccelerometerBiasCov().diagonal();
 
-//  std::cout << "Y: " << obs.Y.transpose() <<
-//               "\nb: " << obs.b.transpose() <<
-//               "\nH:\n" << obs.H <<
-//               "\nPI:\n" << obs.PI <<
-//               "\nN:\n" << obs.N << std::endl;
-//  std::cout << "XinvX\n" << state_.getX() * state_.getXinv() << std::endl;
-
-  // Get left invariant kalman gain
-  Eigen::MatrixXd PHT = P * obs.H.transpose();
-//  std::cout << "PHT" << PHT << std::endl;
-  Eigen::MatrixXd S = obs.H * PHT + obs.N;
-  Eigen::MatrixXd K = PHT * S.inverse();
-
-  // Measurement error
-  Eigen::MatrixXd BigXinv;
-  state_.copyDiagXinv(obs.Y.rows() / state_.dimX(), BigXinv);
-  Eigen::MatrixXd Z = BigXinv * obs.Y - obs.b;
-  Eigen::VectorXd delta = K * obs.PI * Z;
-
-  // State update
-  Eigen::MatrixXd dX =
-      Exp_SEK3(delta.segment(0, delta.rows() - state_.dimTheta()));
-  Eigen::VectorXd dTheta =
-      delta.segment(delta.rows() - state_.dimTheta(), state_.dimTheta());
-  Eigen::MatrixXd X_new = state_.getX() * dX;  // Left-Invariant Update
-  Eigen::VectorXd Theta_new = state_.getTheta() + dTheta;
-  state_.setX(X_new);
-  state_.setTheta(Theta_new);
-
-  // Update Covariance
-  Eigen::MatrixXd IKH =
-      Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP()) - K * obs.H;
-  Eigen::MatrixXd P_new = IKH * P * IKH.transpose() +
-      K * obs.N * K.transpose();
-
-  // Convert back to right invariant covariance
-  Eigen::MatrixXd adjX = Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP());
-  adjX.topLeftCorner(state_.dimX(), state_.dimX()) = Adjoint_SEK3(state_.getX());
-  state_.setP(adjX * P_new * adjX.transpose());
+  return Qk;
 }
 
 // Correct State: Right-Invariant Observation
 void InEKF::Correct(const Observation& obs) {
+  auto start = std::chrono::high_resolution_clock::now();
   // Compute Kalman Gain
   Eigen::MatrixXd P = state_.getP();
   Eigen::MatrixXd PHT = P * obs.H.transpose();
-  Eigen::MatrixXd S = obs.H * PHT + obs.N;
-  Eigen::MatrixXd K = PHT * S.inverse();
 
+  Eigen::MatrixXd S = obs.H * PHT + obs.N;
+  Eigen::MatrixXd I = Eigen::MatrixXd::Identity(S.rows(), S.cols());
+  Eigen::MatrixXd K = PHT * S.llt().solve(I);
+
+  // TODO (@Brian-Acosta this doesn't seem very good for many measurements)
   // Copy X along the diagonals if more than one measurement
   Eigen::MatrixXd BigX;
   state_.copyDiagX(obs.Y.rows() / state_.dimX(), BigX);
 
   // Compute correction terms
   Eigen::MatrixXd Z = BigX * obs.Y - obs.b;
-  // cout << "Z: (from InEKF) " << endl;
-  // cout << Z.transpose() << endl;
   Eigen::VectorXd delta = K * obs.PI * Z;
   Eigen::MatrixXd dX =
       Exp_SEK3(delta.segment(0, delta.rows() - state_.dimTheta()));
-  // cout << "dX: " << endl;
-  // cout << dX << endl;
-  // cout << "X from InEKF: " << endl;
-  // cout << state_.getX() << endl;
+
   Eigen::VectorXd dTheta =
       delta.segment(delta.rows() - state_.dimTheta(), state_.dimTheta());
 
@@ -287,6 +249,9 @@ void InEKF::Correct(const Observation& obs) {
                           K * obs.N * K.transpose();  // Joseph update form
 
   state_.setP(P_new);
+  auto end = std::chrono::high_resolution_clock::now();
+
+  int time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 }
 
 // Create Observation from vector of landmark measurements
@@ -477,30 +442,6 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
     }
   }
   return;
-}
-
-void InEKF::CorrectExternalPositionMeasurement(const ExternalPositionMeasurement& measurement) {
-
-  double dimX = state_.dimX();
-  double dimP = state_.dimP();
-
-  Eigen::VectorXd Y = Eigen::VectorXd::Zero(dimX);
-  Eigen::VectorXd b = Eigen::VectorXd::Zero(dimX);
-  Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, dimP);
-  Eigen::MatrixXd N = measurement.covariance_;
-  Eigen::MatrixXd PI = Eigen::MatrixXd::Zero(3, dimX);
-
-  Y.head<3>() = measurement.positionInWorld_;
-  Y(4) = 1;
-  b.head<3>() = measurement.positionInBody_;
-  b(4) = 1;
-  H.leftCols<3>() = -skew(measurement.positionInBody_);
-  H.block<3,3>(0, 6) = Eigen::Matrix3d::Identity();
-  PI.topLeftCorner<3,3>() = Eigen::Matrix3d::Identity();
-
-  CorrectLeft(
-      Observation(Y, b, H, N, PI)
-  );
 }
 
 
@@ -711,6 +652,7 @@ void InEKF::RemoveLandmarks(const std::vector<long> &to_remove) {
   vector<int> columns_to_remove{};
   columns_to_remove.reserve(to_remove.size());
 
+  // remove landmark ids from the landmark id map
   for (const auto& id: to_remove) {
     if (estimated_landmarks_.count(id) > 0) {
       columns_to_remove.push_back(estimated_landmarks_.at(id));
@@ -718,6 +660,8 @@ void InEKF::RemoveLandmarks(const std::vector<long> &to_remove) {
     }
   }
 
+  // Need to account for the fact that column indices will decrease as we
+  // remove columns
   std::sort(columns_to_remove.begin(), columns_to_remove.end());
   for (int i = 0; i < columns_to_remove.size(); ++i) {
     columns_to_remove[i] -= i;

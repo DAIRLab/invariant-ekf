@@ -119,14 +119,16 @@ class InEKF {
 
   void Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt);
   void Correct(const Observation& obs);
-  void CorrectLeft(const Observation& obs);
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
   void CorrectKinematics(const vectorKinematics& measured_kinematics);
-  void CorrectExternalPositionMeasurement(const ExternalPositionMeasurement& measurement);
   void RemoveLandmarks(const std::vector<long>& landmarks_to_remove);
 
 
  private:
+
+  inline Eigen::DiagonalMatrix<double, Eigen::Dynamic> MakeQk(
+      int dimP, int dimTheta, double dt) const;
+
   RobotState state_;
   NoiseParams noise_params_;
   mapIntVector3d prior_landmarks_;

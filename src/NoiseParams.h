@@ -45,12 +45,12 @@ class NoiseParams {
   void setContactNoise(const Eigen::Vector3d& std);
   void setContactNoise(const Eigen::Matrix3d& cov);
 
-  const Eigen::Matrix3d& getGyroscopeCov();
-  const Eigen::Matrix3d& getAccelerometerCov();
-  const Eigen::Matrix3d& getGyroscopeBiasCov();
-  const Eigen::Matrix3d& getAccelerometerBiasCov();
-  const Eigen::Matrix3d& getLandmarkCov();
-  const Eigen::Matrix3d& getContactCov();
+  const Eigen::Matrix3d& getGyroscopeCov() const;
+  const Eigen::Matrix3d& getAccelerometerCov() const;
+  const Eigen::Matrix3d& getGyroscopeBiasCov() const;
+  const Eigen::Matrix3d& getAccelerometerBiasCov() const;
+  const Eigen::Matrix3d& getLandmarkCov() const;
+  const Eigen::Matrix3d& getContactCov() const;
 
   friend std::ostream& operator<<(std::ostream& os, const NoiseParams& p);
 
