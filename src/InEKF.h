@@ -123,6 +123,8 @@ class InEKF {
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
   void CorrectKinematics(const vectorKinematics& measured_kinematics);
   void CorrectExternalPositionMeasurement(const ExternalPositionMeasurement& measurement);
+  void RemoveLandmarks(const std::vector<long>& landmarks_to_remove);
+
 
  private:
   RobotState state_;

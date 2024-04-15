@@ -18,6 +18,7 @@ namespace inekf {
 using namespace std;
 
 void removeRowAndColumn(Eigen::MatrixXd& M, int index);
+void remove3RowsAndColumns(Eigen::MatrixXd& M, int start_index);
 
 // ------------ Observation -------------
 // Default constructor
@@ -628,9 +629,7 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
 
       // Remove 3 rows and columns from P
       int startIndex = 3 + 3 * (it->second - 3);
-      removeRowAndColumn(P_rem, startIndex);  // TODO: Make more efficient
-      removeRowAndColumn(P_rem, startIndex);  // TODO: Make more efficient
-      removeRowAndColumn(P_rem, startIndex);  // TODO: Make more efficient
+      remove3RowsAndColumns(P_rem, startIndex);
 
       // Update all indices for estimated_landmarks and
       // estimated_contact_positions
@@ -707,6 +706,48 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
   return;
 }
 
+void InEKF::RemoveLandmarks(const std::vector<long> &to_remove) {
+
+  vector<int> columns_to_remove{};
+  columns_to_remove.reserve(to_remove.size());
+
+  for (const auto& id: to_remove) {
+    if (estimated_landmarks_.count(id) > 0) {
+      columns_to_remove.push_back(
+          estimated_landmarks_.at(id) - columns_to_remove.size()
+      );
+      estimated_landmarks_.erase(id);
+    }
+  }
+
+  Eigen::MatrixXd X_rem = state_.getX();
+  Eigen::MatrixXd P_rem = state_.getP();
+  for (const auto& col: columns_to_remove) {
+    // Remove row and column from X
+    removeRowAndColumn(X_rem, col);
+
+    // Remove 3 rows and columns from P
+    int startIndex = 3 + 3 * (col - 3);
+    remove3RowsAndColumns(P_rem, startIndex);
+
+    // Update indices for estimated_landmarks and contacts that
+    // remain in the filter
+    for (map<int, int>::iterator it2 = estimated_landmarks_.begin();
+         it2 != estimated_landmarks_.end(); ++it2) {
+      it2->second -= static_cast<int>(it2->second > col);
+    }
+    for (map<int, int>::iterator it2 = estimated_contact_positions_.begin();
+         it2 != estimated_contact_positions_.end(); ++it2) {
+      it2->second -= static_cast<int>(it2->second > col);
+    }
+  }
+
+  // Update state and covariance
+  state_.setX(X_rem);
+  state_.setP(P_rem);
+
+}
+
 void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
   unsigned int dimX = M.cols();
   // cout << "Removing index: " << index<< endl;
@@ -715,6 +756,15 @@ void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
   M.block(0, index, dimX, dimX - index - 1) =
       M.rightCols(dimX - index - 1).eval();
   M.conservativeResize(dimX - 1, dimX - 1);
+}
+
+void remove3RowsAndColumns(Eigen::MatrixXd& M, int index) {
+  unsigned int dim = M.cols();
+  M.block(index, 0, dim - index - 3, dim) =
+      M.bottomRows(dim - index - 3).eval();
+  M.block(0, index, dim, dim - index - 3) =
+      M.rightCols(dim - index - 3).eval();
+  M.conservativeResize(dim - 3, dim - 3);
 }
 
 }  // namespace inekf
