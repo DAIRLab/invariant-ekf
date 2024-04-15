@@ -713,11 +713,14 @@ void InEKF::RemoveLandmarks(const std::vector<long> &to_remove) {
 
   for (const auto& id: to_remove) {
     if (estimated_landmarks_.count(id) > 0) {
-      columns_to_remove.push_back(
-          estimated_landmarks_.at(id) - columns_to_remove.size()
-      );
+      columns_to_remove.push_back(estimated_landmarks_.at(id));
       estimated_landmarks_.erase(id);
     }
+  }
+
+  std::sort(columns_to_remove.begin(), columns_to_remove.end());
+  for (int i = 0; i < columns_to_remove.size(); ++i) {
+    columns_to_remove[i] -= i;
   }
 
   Eigen::MatrixXd X_rem = state_.getX();
