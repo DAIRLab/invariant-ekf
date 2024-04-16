@@ -121,7 +121,7 @@ class InEKF {
   void Correct(const Observation& obs);
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
   void CorrectKinematics(const vectorKinematics& measured_kinematics);
-  void RemoveLandmarks(const std::vector<long>& landmarks_to_remove);
+  void RemoveLandmarks(const std::vector<int64_t>& landmarks_to_remove);
 
 
  private:
