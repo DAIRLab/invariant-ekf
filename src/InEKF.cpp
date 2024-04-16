@@ -171,7 +171,10 @@ void InEKF::Propagate(const Eigen::Matrix<double, 6, 1>& m, double dt) {
   Adj.block(0, 0, dimP - dimTheta, dimP - dimTheta) = Adjoint_SEK3(X);
 
   // (A dt + I) * adj = A dt * adj + adj has more advantageous sparsity
-  Eigen::MatrixXd PhiAdj = (A.sparseView() * Adj.sparseView()) + Adj;
+  // That we can exploit to save a few tens of us
+  Eigen::SparseMatrix<double> A_sparse = A.sparseView();
+  Eigen::SparseMatrix<double> Adj_sparse = Adj.sparseView();
+  Eigen::MatrixXd PhiAdj = A_sparse * Adj_sparse + Adj;
 
   // Approximated discretized noise matrix
   Eigen::MatrixXd Qk_hat = (PhiAdj * Qk) * PhiAdj.transpose(); //
@@ -212,41 +215,30 @@ inline Eigen::DiagonalMatrix<double, Eigen::Dynamic> InEKF::MakeQk(
 
 // Correct State: Right-Invariant Observation
 void InEKF::Correct(const Observation& obs) {
-  auto start = std::chrono::high_resolution_clock::now();
   // Compute Kalman Gain
   Eigen::MatrixXd P = state_.getP();
   Eigen::MatrixXd PHT = P * obs.H.transpose();
-  auto post_pht = std::chrono::high_resolution_clock::now();
-
   Eigen::MatrixXd S = obs.H * PHT + obs.N;
-  auto post_s = std::chrono::high_resolution_clock::now();
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(S.rows(), S.cols());
   Eigen::MatrixXd K = PHT * S.llt().solve(I);
-  auto post_k = std::chrono::high_resolution_clock::now();
-
-  // TODO (@Brian-Acosta this doesn't seem very good for many measurements)
-  // Copy X along the diagonals if more than one measurement
-//  Eigen::MatrixXd BigX;
-//  state_.copyDiagX(obs.Y.rows() / state_.dimX(), BigX);
-  auto post_big_x = std::chrono::high_resolution_clock::now();
 
   // Compute correction terms
-  Eigen::VectorXd Z = Eigen::VectorXd::Zero(obs.Y.rows());
   int dimX = state_.dimX();
   const Eigen::MatrixXd& X = state_.getX();
 
-  // Do Z = X * Y - b taking advantage of block structure of X
+  // Construct  PI * Z = PI * (X * Y - b) taking advantage of block structure of
+  // X and noting that for both kinematic and landmark updates:
+  //   1. PI just selects the top 3 rows of each segment of Z
+  //   2. obs.b[0:3] = 0
+  Eigen::VectorXd PI_Z = Eigen::VectorXd::Zero(3 * obs.Y.rows() / dimX);
   for (int i = 0; i < obs.Y.rows() / state_.dimX(); ++i) {
     int startIndex = i * dimX;
-    Z.segment<3>(startIndex) =
+    PI_Z.segment<3>(3*i) =
         X.topRows<3>() * obs.Y.segment(startIndex, dimX) -
             obs.b.segment<3>(startIndex);
-    Z.segment(startIndex + 3, dimX - 3) =
-        obs.Y.segment(startIndex + 3, dimX - 3) -
-        obs.b.segment(startIndex + 3, dimX - 3);
   }
   //  Eigen::MatrixXd Z = BigX * obs.Y - obs.b;
-  Eigen::VectorXd delta = K * obs.PI * Z;
+  Eigen::VectorXd delta = K * PI_Z;
   Eigen::MatrixXd dX =
       Exp_SEK3(delta.segment(0, delta.rows() - state_.dimTheta()));
 
@@ -258,40 +250,16 @@ void InEKF::Correct(const Observation& obs) {
   Eigen::VectorXd Theta_new = state_.getTheta() + dTheta;
   state_.setX(X_new);
   state_.setTheta(Theta_new);
-  auto post_state_update = std::chrono::high_resolution_clock::now();
 
   // Update Covariance
-  Eigen::MatrixXd IKH =
-      Eigen::MatrixXd::Identity(state_.dimP(), state_.dimP()) - K * obs.H;
-
-  auto post_ikh = std::chrono::high_resolution_clock::now();
+  Eigen::MatrixXd IKH = - K * obs.H;
+  for (int i = 0; i < state_.dimP(); ++i) {
+    IKH(i,i) += 1;
+  }
   Eigen::MatrixXd P_new = IKH * P * IKH.transpose() +
                           K * obs.N * K.transpose();  // Joseph update form
-  auto post_cov_update = std::chrono::high_resolution_clock::now();
 
   state_.setP(P_new);
-
-  int state_update = std::chrono::duration_cast<std::chrono::microseconds>
-      (post_state_update - post_big_x).count();
-  if (state_update > 20) {
-    std::cout << "pht: " << std::chrono::duration_cast<std::chrono::microseconds>
-        (post_pht - start).count() << std::endl;
-    std::cout << "S: " << std::chrono::duration_cast<std::chrono::microseconds>
-        (post_s - post_pht).count() << std::endl;
-    std::cout << "K: " << std::chrono::duration_cast<std::chrono::microseconds>
-        (post_k - post_s).count() << std::endl;
-    std::cout << "BigX: " << std::chrono::duration_cast<std::chrono::microseconds>
-        (post_big_x - post_k).count() << std::endl;
-    std::cout << "State Update: " <<
-              std::chrono::duration_cast<std::chrono::microseconds>
-                  (post_state_update - post_big_x).count() << std::endl;
-    std::cout << "ikh: " << std::chrono::duration_cast<std::chrono::microseconds>
-        (post_ikh - post_state_update).count() << std::endl;
-    std::cout << "Cov Update: " <<
-              std::chrono::duration_cast<std::chrono::microseconds>
-                  (post_cov_update - post_ikh).count() << std::endl << std::endl;
-  }
-
 }
 
 // Create Observation from vector of landmark measurements
