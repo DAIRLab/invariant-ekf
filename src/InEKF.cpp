@@ -226,12 +226,26 @@ void InEKF::Correct(const Observation& obs) {
 
   // TODO (@Brian-Acosta this doesn't seem very good for many measurements)
   // Copy X along the diagonals if more than one measurement
-  Eigen::MatrixXd BigX;
-  state_.copyDiagX(obs.Y.rows() / state_.dimX(), BigX);
+//  Eigen::MatrixXd BigX;
+//  state_.copyDiagX(obs.Y.rows() / state_.dimX(), BigX);
   auto post_big_x = std::chrono::high_resolution_clock::now();
 
   // Compute correction terms
-  Eigen::MatrixXd Z = BigX * obs.Y - obs.b;
+  Eigen::VectorXd Z = Eigen::VectorXd::Zero(obs.Y.rows());
+  int dimX = state_.dimX();
+  const Eigen::MatrixXd& X = state_.getX();
+
+  // Do Z = X * Y - b taking advantage of block structure of X
+  for (int i = 0; i < obs.Y.rows() / state_.dimX(); ++i) {
+    int startIndex = i * dimX;
+    Z.segment<3>(startIndex) =
+        X.topRows<3>() * obs.Y.segment(startIndex, dimX) -
+            obs.b.segment<3>(startIndex);
+    Z.segment(startIndex + 3, dimX - 3) =
+        obs.Y.segment(startIndex + 3, dimX - 3) -
+        obs.b.segment(startIndex + 3, dimX - 3);
+  }
+  //  Eigen::MatrixXd Z = BigX * obs.Y - obs.b;
   Eigen::VectorXd delta = K * obs.PI * Z;
   Eigen::MatrixXd dX =
       Exp_SEK3(delta.segment(0, delta.rows() - state_.dimTheta()));
@@ -257,22 +271,27 @@ void InEKF::Correct(const Observation& obs) {
 
   state_.setP(P_new);
 
-  std::cout << "pht: " << std::chrono::duration_cast<std::chrono::microseconds>
-      (post_pht - start).count() << std::endl;
-  std::cout << "S: " << std::chrono::duration_cast<std::chrono::microseconds>
-      (post_s - post_pht).count() << std::endl;
-  std::cout << "K: " << std::chrono::duration_cast<std::chrono::microseconds>
-      (post_k - post_s).count() << std::endl;
-  std::cout << "BigX: " << std::chrono::duration_cast<std::chrono::microseconds>
-      (post_big_x - post_k).count() << std::endl;
-  std::cout << "State Update: " <<
-  std::chrono::duration_cast<std::chrono::microseconds>
-      (post_state_update - post_big_x).count() << std::endl;
-  std::cout << "ikh: " << std::chrono::duration_cast<std::chrono::microseconds>
-      (post_ikh - post_state_update).count() << std::endl;
-  std::cout << "Cov Update: " <<
-  std::chrono::duration_cast<std::chrono::microseconds>
-      (post_cov_update - post_ikh).count() << std::endl << std::endl;
+  int state_update = std::chrono::duration_cast<std::chrono::microseconds>
+      (post_state_update - post_big_x).count();
+  if (state_update > 20) {
+    std::cout << "pht: " << std::chrono::duration_cast<std::chrono::microseconds>
+        (post_pht - start).count() << std::endl;
+    std::cout << "S: " << std::chrono::duration_cast<std::chrono::microseconds>
+        (post_s - post_pht).count() << std::endl;
+    std::cout << "K: " << std::chrono::duration_cast<std::chrono::microseconds>
+        (post_k - post_s).count() << std::endl;
+    std::cout << "BigX: " << std::chrono::duration_cast<std::chrono::microseconds>
+        (post_big_x - post_k).count() << std::endl;
+    std::cout << "State Update: " <<
+              std::chrono::duration_cast<std::chrono::microseconds>
+                  (post_state_update - post_big_x).count() << std::endl;
+    std::cout << "ikh: " << std::chrono::duration_cast<std::chrono::microseconds>
+        (post_ikh - post_state_update).count() << std::endl;
+    std::cout << "Cov Update: " <<
+              std::chrono::duration_cast<std::chrono::microseconds>
+                  (post_cov_update - post_ikh).count() << std::endl << std::endl;
+  }
+
 }
 
 // Create Observation from vector of landmark measurements
