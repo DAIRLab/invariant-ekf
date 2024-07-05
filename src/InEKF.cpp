@@ -207,7 +207,7 @@ inline Eigen::DiagonalMatrix<double, Eigen::Dynamic> InEKF::MakeQk(
   }
   Qk.diagonal().segment<3>(dimP - dimTheta) =
       dt * noise_params_.getGyroscopeBiasCov().diagonal();
-  Qk.diagonal().segment<3>(dimP - dimTheta + 3, dimP - dimTheta + 3) =
+  Qk.diagonal().segment<3>(dimP - dimTheta + 3) =
       dt * noise_params_.getAccelerometerBiasCov().diagonal();
 
   return Qk;
