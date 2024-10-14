@@ -220,7 +220,7 @@ void InEKF::Correct(const Observation& obs) {
   Eigen::MatrixXd PHT = P * obs.H.transpose();
   Eigen::MatrixXd S = obs.H * PHT + obs.N;
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(S.rows(), S.cols());
-  Eigen::MatrixXd K = PHT * S.llt().solve(I);
+  Eigen::MatrixXd K = PHT * S.ldlt().solve(I);
 
   // Compute correction terms
   int dimX = state_.dimX();
