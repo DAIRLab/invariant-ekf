@@ -219,11 +219,10 @@ void RobotState::copyDiagX(int n, Eigen::MatrixXd& BigX) {
 void RobotState::copyDiagXinv(int n, Eigen::MatrixXd& BigX) {
   int dimX = this->dimX();
   const Eigen::MatrixXd Xinv = getXinv();
+  BigX.resize(n*dimX, n*dimX);
+  BigX.setZero();
   for(int i=0; i<n; ++i) {
-    int startIndex = BigX.rows();
-    BigX.conservativeResize(startIndex + dimX, startIndex + dimX);
-    BigX.block(startIndex,0,dimX,startIndex) = Eigen::MatrixXd::Zero(dimX,startIndex);
-    BigX.block(0,startIndex,startIndex,dimX) = Eigen::MatrixXd::Zero(startIndex,dimX);
+    int startIndex = i * dimX;
 #if INEKF_USE_MUTEX
     unique_lock<mutex> mlock(mutex_);
 #endif
